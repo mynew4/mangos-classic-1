@@ -509,6 +509,47 @@ void Map::Update(const uint32& t_diff)
                 }
             }
         }
+
+        // Handle updates for creatures in combat with player and are more than 60 yards away
+        if (plr->isInCombat())
+        {
+            std::vector<Creature*> updateList;
+            HostileReference* ref = plr->getHostileRefManager().getFirst();
+
+            while (ref)
+            {
+                if (Unit* unit = ref->getSource()->getOwner())
+                    if (((Creature*)unit) && unit->GetMapId() == plr->GetMapId() && !unit->IsWithinDistInMap(plr, GetVisibilityDistance(), false))
+                        updateList.push_back(((Creature*)unit));
+
+                ref = ref->next();
+            }
+
+            for (Creature* creature : updateList)
+            {
+                // Process deferred update list for player
+                CellArea area = Cell::CalculateCellArea(creature->GetPositionX(), creature->GetPositionY(), GetVisibilityDistance());
+
+                for (uint32 x = area.low_bound.x_coord; x <= area.high_bound.x_coord; ++x)
+                {
+                    for (uint32 y = area.low_bound.y_coord; y <= area.high_bound.y_coord; ++y)
+                    {
+                        // marked cells are those that have been visited
+                        // don't visit the same cell twice
+                        uint32 cell_id = (y * TOTAL_NUMBER_OF_CELLS_PER_MAP) + x;
+                        if (!isCellMarked(cell_id))
+                        {
+                            markCell(cell_id);
+                            CellPair pair(x, y);
+                            Cell cell(pair);
+                            cell.SetNoCreate();
+                            Visit(cell, grid_object_update);
+                            Visit(cell, world_object_update);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // non-player active objects
